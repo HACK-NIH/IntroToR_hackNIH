@@ -1,8 +1,3 @@
----
-title: "Introductory R Course"
-author: "HACK! NIH Malaysia"
-output: github_document
----
 
 # Introductory R Course by HACK! NIH Malaysia
 
@@ -10,8 +5,8 @@ This repository contains all the materials for the Introductory R Course develop
 
 ## Course Objectives
 
-1. Equip participants with the foundational skills in R programming and data handling.
-2. Enable participants to perform data analysis, visualization, and model building using R.
+1. Equip NIH peoples with the foundational skills in R programming and data handling.
+2. Enable NIH peoples  to perform data analysis, visualization, and model building using R.
 
 ## Course Modules
 

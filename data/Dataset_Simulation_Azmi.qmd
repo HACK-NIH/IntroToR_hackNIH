@@ -1,0 +1,419 @@
+---
+title: "Data Simulation for Dataset (Azmi)"
+author: "Mohd Azmi"
+date: last-modified
+date-format: "dddd, DD/MM/YYYY"
+format: 
+  html:
+    theme: sandstone
+    code-fold: true
+    code-copy: hover
+    code-overflow: wrap
+    code-tools: true
+    df-print: paged
+    embed-resources: true
+    page-layout: full
+    title-block-banner: true
+    title-block-style: default
+    fontsize: .9em
+    monofont: 'Fira Code'
+execute: 
+  echo: true
+  warning: false
+number-sections: true
+toc: true
+fig-dpi: 320
+dpi: 320
+---
+
+# Preamble
+
+## What is this document?
+
+-   This document is a data simulation for dataset (Azmi) using R programming language.
+-   The purpose of this document is to simulate a dataset for a our training program
+-   As for today (2024-03-05), this dataset is only placeholder and will be updated accordingly
+-   Anyone can use this dataset.
+-   If we want to standardised this dataset, we need to discuss further. Im open for any suggestion.
+
+## Library
+
+-   pacman
+    -   load multiple package at once
+    -   If the package is not yet install, it will install automatic
+-   tidyverse & stringi
+    -   this should be obvious
+-   labelled & haven
+    -   for labelled data (SPSS)
+<!--# even if you want to stay away from SPSS, majority of NIH user still depend on SPSS -->
+-   simstudy
+    -   for data simulation
+<!--# just some basic simulation. require further reading -->
+
+```{r}
+#| label: setup
+
+pacman::p_load(tidyverse, stringi, labelled, haven, simstudy)
+```
+
+# Dataset Simulation
+
+## Hypercholesterolaemia (Cross-sectional)
+
+-   This dataset simulation was copied from my other training program.
+-   Not commented yet because initially it for my own use.
+-   But since it may be use in our project, I will comment it later.
+
+
+### Dataset with Labels
+
+-   This is dataset with labels
+-   Suitable for csv, xlsx or any format
+-   Note: if export to SPSS, the index level with start with 1
+
+```{r}
+set.seed(123)
+
+chol_labds <- tibble(id = paste0(stri_rand_strings(350, length = 2, pattern = "[A-Fd-h]"), 
+                                 stri_rand_strings(350, length = 2, pattern = "[0-9]"))) %>% 
+  mutate(age_mod1 = as.integer(runif(n = 350, min = -10, max = 25)),
+         age_mod2 = as.integer(runif(n = 350, min = -10, max = 35)),
+         age_mod3 = rpois(n = 350, lambda = 5),
+         age_mod4 = as.integer(rnorm(350, mean = 20, sd = 2.5)),
+         bmi_cat = sample(0:3, size = 350, replace = T, 
+                          prob = c(.15, .15, .2, .5)),
+         gender = sample(c("Male", "Female"), size = 350, replace = T, 
+                         prob = c(.55,.45)),
+         gender = fct_relevel(gender, "Male", "Female"), 
+         age = age_mod1+age_mod2+age_mod3+age_mod4,
+         ethnic = sample(c("Malay", "Chinese", "Indian"),
+                         size = 350, replace = T, prob = c(.5, .3, .2)),
+         ethnic = fct_relevel(ethnic, "Malay", "Chinese", "Indian")) %>% 
+  rowwise() %>% 
+  mutate(height = as.integer(case_when(gender == "Male" ~ runif(n = 1, min = 155, max = 175), 
+                                       gender == "Female" ~ runif(n = 1, min = 145, max = 165))), 
+         bmi = case_when(bmi_cat == 0 ~ runif(n = 1, min = 16.0, max = 19.4),
+                         bmi_cat == 1 ~ runif(n = 1, min = 17.5, max = 23.9),
+                         bmi_cat == 2 ~ runif(n = 1, min = 22.0, max = 25.9),
+                         bmi_cat == 3 ~ runif(n = 1, min = 24.0, max = 36.0)),
+         weight = round(bmi*(height/100)^2, digits = 1),
+         tc_lvl = round(case_when(age >= 18 & age <= 39 ~ 
+                              rnorm(n = 1, mean = 4.5, sd = 1),
+                            age >= 40 & age <= 59 ~ 
+                              rnorm(n = 1, mean = 5, sd = 1.2),
+                            age >= 60 ~ rnorm(n = 1, mean = 5.2, sd = 1.3)), 2))  %>% 
+  ungroup() %>% 
+  mutate(kc_prob1 = case_when(age >= 18 & age <= 25 ~ .1,
+                              age >= 26 & age <= 40 ~ .3,
+                              age >= 41 ~ .4),
+         kc_prob2 = case_when(tc_lvl >= 5.2 ~ .1,
+                              tc_lvl < 5.2 ~ 0),
+         kc_prob = kc_prob1+kc_prob2,
+         known_chol = case_when(runif(n()) < kc_prob ~ "Yes", 
+                                TRUE ~ "No"),
+         ct_prob = as.numeric(case_when(known_chol == "No" ~ NA_character_, 
+                                        age >= 18 & age <= 25 ~ ".1", 
+                                        age >= 26 & age <= 40 ~ ".4", 
+                                        age >= 41 ~ ".7")),
+         curr_tx = case_when(is.na(ct_prob) ~ NA_character_, 
+                             runif(n()) < ct_prob ~ "Yes", 
+                             TRUE ~ "No"),
+         across(.cols = c(known_chol, curr_tx),
+                .fns = ~ fct_relevel(., "No", "Yes"))) %>% 
+  filter(age >= 18,
+         tc_lvl >= 2.5 & tc_lvl <= 12) %>% 
+  slice_sample(n = 250) %>% 
+  select(id, ethnic, age, gender, weight, height, tc_lvl, known_chol, curr_tx)
+
+chol_labds
+
+# write_csv(chol_labds, "../data/chol_labds.csv")
+```
+
+### Dataset with Numeric
+
+-   This is raw dataset, i.e.:
+    -   Everything is numeric
+    -   For categorical data, the level start with value 0
+    -   No labels
+    -   No factor
+-   Suitable for data wrangling exercise
+-   There is also data dictionary
+
+```{r}
+chol_rawds <- chol_labds %>% 
+  mutate(across(.cols = ethnic:curr_tx,
+                .fns = ~ as.numeric(.)),
+         across(.cols = c(ethnic, gender, known_chol, curr_tx),
+                .fns = ~ .-1))
+
+chol_rawds
+
+# write_csv(chol_rawds, "../data/chol_rawds.csv")
+
+chol_raw_dict <- tribble(~Variable, ~Code, ~Label, ~Description, 
+                         "id", "-", "-", "unique ID", 
+                         "ethnic", "0", "Malay", "Ethnicity", 
+                         "", "1", "Chinese", "", 
+                         "", "1", "Indian", "", 
+                         "age", "-", "-", "Age (year)", 
+                         "gender", "0", "Male", "Gender", 
+                         "", "1", "Female", "", 
+                         "weight", "-", "-", "Body Weight (kg)", 
+                         "height", "-", "-", "Body Height (cm)", 
+                         "tc_lvl", "-", "-", "Capillary Total Cholesterol Level (mmol/L)", 
+                         "known_chol", "0", "No", "already diagnosed with", 
+                         "", "1", "Yes", "hypercholesterolaemia", 
+                         "curr_tx", "0", "No", "Currently on Treatment", 
+                         "", "1", "Yes", "")
+
+chol_raw_dict 
+
+# write_csv(chol_raw_dict, "../data/chol_raw_dict.csv")
+
+```
+
+
+### Export to SPSS
+
+-   This is dataset with SPSS labels
+-   Can be exported to SPSS format
+
+
+```{r}
+chol_spssds <- chol_rawds %>% 
+  mutate(curr_tx = case_when(is.na(curr_tx) ~ 9999,
+                             TRUE ~ curr_tx)) %>% 
+  set_value_labels(ethnic = c("Malay" = 0, "Chinese" = 1, "Indian" = 2),
+                   gender = c("Male" = 0, "Female" = 1), 
+                   known_chol = c("No" = 0, "Yes" = 1), 
+                   curr_tx = c("No" = 0, "Yes" = 1, "N/A" = 9999)) %>% 
+  set_na_values(curr_tx = 9999) %>% 
+  set_variable_labels(ethnic = "Ethnicity",
+                      age = "Age (year)",
+                      gender = "Gender",
+                      weight = "Body Weight (kg)",
+                      height = "Body Height (cm)",
+                      tc_lvl = "Capillary Total Cholesterol Level (mmol/L)",
+                      known_chol = "Already Diagnosed with Hypercholesterolaemia",
+                      curr_tx = "Currently on Treatment")
+
+chol_spssds
+
+# write_sav(chol_spssds, "../data/chol_spssds.sav")
+```
+
+
+## Asthma (Longitudinal)
+
+-   Also another dataset.
+-   There is mixture of multiple condition.
+    -   I'll put some context later
+-   Not commented yet because initially it for my own use.
+
+
+### simstudy Definition
+
+```{r}
+asthma_def <- defData(varname = "Gender", dist = "binary", 
+                      formula = .5, link = "identity") %>% 
+  defData(varname = "Age", dist = "uniform", 
+          formula = "25;35", link = "identity") %>% 
+  defData(varname = "WorkStatus", dist = "binary", 
+          formula = "sqrt((Gender+1)/2)-.3", link = "identity") %>% 
+  defData(varname = "Height", dist = "normal",
+          formula = "1.5 + (1-Gender)/4", variance = .01, 
+          link = "identity") %>% 
+  defData(varname = "BMI_Base", dist = "categorical", 
+          formula = ".2;.3;.3;.2", link = "identity") %>% 
+  defData(varname = "BMI_Pre", dist = "normal",
+          formula = "BMI_Base*5+15", variance = 5, link = "identity") %>% 
+  defData(varname = "Weight_Pre", dist = "nonrandom",
+          formula = "BMI_Pre * Height^2") %>% 
+  defData(varname = "BMIreduction", dist = "normal",
+          formula = 4, variance = 3, link = "identity") %>% 
+  defData(varname = "PA_Base", dist = "categorical",
+          formula = ".5;.3;.2") %>% 
+  defData(varname = "PA_HW", dist = "poisson",
+          formula = "(((PA_Base+1)^2)/3)", variance = 1, link = "identity") %>% 
+  defData(varname = "BMI_Post", dist = "nonrandom",
+          formula = "BMI_Pre - (BMIreduction+PA_HW+BMI_Pre/20)/3") %>% 
+  defData(varname = "Weight_Post", dist = "nonrandom",
+          formula = "BMI_Post * Height^2") %>% 
+  defData(varname = "Tx2", dist = "categorical",
+          formula = ".46;.27;.27", link = "identity") %>% 
+  defData(varname = "PEFR_Pre", dist = "normal",
+          formula = "455 - 50*Gender", variance = 500, 
+          link = "identity") %>% 
+  defData(varname = "DrugEffect", dist = "nonrandom",
+          formula = "sqrt(sqrt(Tx2-1))") %>% 
+  defData(varname = "PEFR_Post", dist = "normal",
+          formula = "PEFR_Pre + 50*DrugEffect", variance = 1000, 
+          link = "identity") %>% 
+  defData(varname = "SxWheeze_Pre", dist = "binary",
+          formula = .65, link = "identity") %>% 
+  # defData(varname = "SxWProb", dist = "nonrandom",
+  #         formula = "(2+SxWheeze_Pre)/3*0.6/sqrt(sqrt(DrugEffect+1))") %>% 
+  defData(varname = "SxWProb", dist = "nonrandom",
+          formula = "(2+SxWheeze_Pre)/3*0.6/(DrugEffect+1)") %>% 
+  defData(varname = "SxWheeze_Post", dist = "binary",
+          formula = "SxWProb", link = "identity") %>% 
+  defData(varname = "PS_Pre", dist = "uniformInt",
+          formula = "4;6", link = "identity") %>% 
+  defData(varname = "PS_improvement", dist = "uniformInt",
+          formula = "0;2", link = "identity")
+
+asthma_def
+```
+
+### Simulate the Dataset
+
+```{r}
+set.seed(245)
+asthma_ds0 <- genData(150, asthma_def) %>% 
+  as_tibble() %>% 
+  rowwise() %>% 
+  mutate(idR = stri_rand_strings(1, 4)) %>% 
+  ungroup() %>% 
+  mutate(Gender = fct_recode(as.character(Gender), 
+                             "Male" = "0", "Female" = "1"),
+         Age = round(Age, 0),
+         WorkStatus = fct_recode(as.character(WorkStatus),
+                                 "Employed" = "0", "Unemployed" = "1"), 
+         Height = round(Height*100),
+         PA_HW = round(PA_HW),
+         Tx2 = fct_recode(as.character(Tx2), 
+                          "Placebo" = "1", 
+                          "Drug A" = "2", 
+                          "Drug B" = "3"),
+         Tx1 = fct_recode(Tx2,
+                          "Drug" = "Drug A", 
+                          "Drug" = "Drug B"),
+         across(.cols = starts_with("SxWheeze"),
+                .fns = ~ fct_recode(as.character(.),
+                                    "No" = "0",
+                                    "Yes" = "1")),
+         PS_Post = PS_Pre - PS_improvement,
+         across(.cols = starts_with("Weight"),
+                .fns = ~ round(.,1)),
+         across(.cols = starts_with("PEFR"),
+                .fns = ~ round(.,0)))
+asthma_ds <- asthma_ds0 %>% 
+  select(id, idR, Gender:Height, Weight_Pre, PA_HW, Weight_Post, Tx2, 
+         PEFR_Pre, PEFR_Post, SxWheeze_Pre, SxWheeze_Post, 
+         PS_Pre, PS_Post) %>% 
+  set_variable_labels(Age = "Age (year)",
+                      WorkStatus = "Employment", 
+                      Height = "Height (cm)",
+                      Weight_Pre = "Weight (kg) - before",
+                      PA_HW = "Physical Activity (total hour per week)",
+                      Weight_Post = "Weight (kg) - after",
+                      Tx2 = "Treatment Group",
+                      PEFR_Pre = "PEFR (L/min) - before",
+                      PEFR_Post = "PEFR (L/min) - after",
+                      SxWheeze_Pre = "Symptom Wheezing - before",
+                      SxWheeze_Post = "Symptom Wheezing - after",
+                      PS_Pre = "Pains Score - before",
+                      PS_Post = "Pains Score - after")
+asthma_ds
+
+set.seed(245)
+asthma24_wide <- asthma_ds %>% 
+  slice_sample(n = 24) %>% 
+  ungroup() %>% 
+  select(id:Height, Weight_Pre, Tx2, PEFR_Pre, PEFR_Post,
+         SxWheeze_Pre, SxWheeze_Post, PS_Pre, PS_Post) %>% 
+  rename(Weight = Weight_Pre)
+asthma24_wide
+
+set.seed(245)
+asthma24_long <- asthma24_wide %>% 
+  pivot_longer(cols = starts_with("PEFR"),
+               names_to = "PEFRTime", 
+               values_to = "PEFR") %>% 
+  pivot_longer(cols = starts_with("SxW"),
+               names_to = "SxWheezeTime", 
+               values_to = "SxWheeze") %>% 
+  pivot_longer(cols = starts_with("PS"),
+               names_to = "PSTime",
+               values_to = "PS") %>% 
+  mutate(Time = case_when(
+    PEFRTime == "PEFR_Pre" & SxWheezeTime == "SxWheeze_Pre" & PSTime == "PS_Pre" ~ "Pre",
+    PEFRTime == "PEFR_Post" & SxWheezeTime == "SxWheeze_Post" & PSTime == "PS_Post" ~ "Post"),
+         Time = fct_relevel(factor(Time), "Pre"),
+         SxWheeze = fct_relevel(SxWheeze, "No")) %>% 
+  drop_na(Time) %>% 
+  select(-c(PEFRTime, SxWheezeTime, PSTime)) %>% 
+  relocate(Time, .after = Weight) %>% 
+  set_variable_labels(SxWheeze = "Wheezing Symptom",
+                      PS = "Pain Score")
+asthma24_long
+
+
+asthma_pre <- asthma_ds %>% 
+  select(id, idR, Gender:Height, Weight_Pre, Tx2, PEFR_Pre, SxWheeze_Pre, PS_Pre)
+
+asthma_post <- asthma_ds %>% 
+  select(id, idR, PEFR_Post, SxWheeze_Post, PS_Post)
+
+```
+
+### Export SPSS
+
+```{r}
+# write_sav(asthma_ds, "../data/asthma_ds.sav")
+# write_sav(asthma24_long, "../data/asthma24_long.sav")
+# write_sav(asthma24_wide, "../data/asthma24_wide.sav")
+
+# write_sav(asthma_pre, "../data/asthma_pre.sav")
+# write_sav(asthma_post, "../data/asthma_post.sav")
+```
+
+### Data Dictionary
+
+
+```{r}
+asthmads_sav <- read_sav("../data/asthma_ds.sav")
+
+asthma_ds_colnamelabel <- map(asthmads_sav, possibly(summarytools::label, NA)) %>% 
+  enframe(name = "col_name", value = "col_lab") %>% 
+  mutate(col_lab = unlist(col_lab))
+
+asthma_ds_vallabel <-map(asthmads_sav, ~ attr(.x, "labels")) 
+
+lab_ext <- function(column) {
+    lbls <- attr(column, "labels")
+    if (!is.null(lbls)) {
+        paste(as.character(lbls), names(lbls), sep = ": ", collapse = "; ")
+    } else {
+        NA_character_
+    }
+}
+
+asthma_ds_vallabel <- map(asthmads_sav, lab_ext) %>% 
+  enframe(name = "col_name", value = "val_lab") %>% 
+  mutate(val_lab = unlist(val_lab))
+
+asthma_ds_dict <- left_join(asthma_ds_colnamelabel, 
+                            asthma_ds_vallabel)
+
+# gt(asthma_ds_dict) %>%
+#   cols_label(col_name = "Column Name",
+#              col_lab = "Column Label",
+#              val_lab = "Value Label") %>%
+#   gtsave(., filename = "../data/asthma_data_dictionary.docx")
+
+
+```
+
+### Export CSV
+
+```{r}
+# write.csv(asthma_ds, "../data/asthma_ds.csv")
+
+# write.csv(zap_labels(asthmads_sav), "../data/asthma_ds_nolab.csv")
+
+```
+
+# End of Document
+
